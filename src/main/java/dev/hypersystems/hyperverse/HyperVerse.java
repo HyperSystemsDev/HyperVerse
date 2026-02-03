@@ -1,5 +1,7 @@
 package dev.hypersystems.hyperverse;
 
+import dev.hypersystems.hyperverse.util.PermissionUtil;
+import dev.hypersystems.hyperverse.world.WorldManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,8 +24,8 @@ public final class HyperVerse {
     private final Path dataDirectory;
     private final Logger logger;
 
-    // Core components (to be implemented)
-    // private WorldManager worldManager;
+    // Core components
+    private WorldManager worldManager;
     // private TemplateRegistry templateRegistry;
     // private HyperVerseConfig config;
 
@@ -70,12 +72,21 @@ public final class HyperVerse {
                 dataDirectory.toFile().mkdirs();
             }
 
+            // Initialize HyperPerms integration
+            PermissionUtil.init();
+            if (PermissionUtil.isAvailable()) {
+                logger.info("HyperPerms integration enabled");
+            } else {
+                logger.info("HyperPerms not found - all players have full access");
+            }
+
             // TODO: Initialize configuration
             // config = new HyperVerseConfig(dataDirectory);
             // config.load();
 
-            // TODO: Initialize world manager
-            // worldManager = new WorldManager(this);
+            // Initialize world manager
+            worldManager = new WorldManager(this);
+            worldManager.initialize();
 
             // TODO: Initialize template registry
             // templateRegistry = new TemplateRegistry(dataDirectory);
@@ -101,10 +112,11 @@ public final class HyperVerse {
 
         logger.info("Disabling HyperVerse...");
 
-        // TODO: Cleanup resources
-        // if (worldManager != null) {
-        //     worldManager.shutdown();
-        // }
+        // Cleanup resources
+        if (worldManager != null) {
+            worldManager.shutdown();
+            worldManager = null;
+        }
 
         enabled = false;
         instance = null;
@@ -166,10 +178,22 @@ public final class HyperVerse {
         return enabled;
     }
 
-    // ==================== Future API Methods ====================
+    // ==================== World Management API ====================
 
-    // TODO: World management API
-    // public WorldManager getWorldManager() { return worldManager; }
+    /**
+     * Gets the world manager.
+     *
+     * @return the world manager
+     */
+    @NotNull
+    public WorldManager getWorldManager() {
+        if (worldManager == null) {
+            throw new IllegalStateException("HyperVerse is not enabled");
+        }
+        return worldManager;
+    }
+
+    // ==================== Future API Methods ====================
 
     // TODO: Template registry API
     // public TemplateRegistry getTemplateRegistry() { return templateRegistry; }

@@ -2,6 +2,7 @@ package dev.hypersystems.hyperverse.platform;
 
 import dev.hypersystems.hyperverse.HyperVerse;
 import dev.hypersystems.hyperverse.HyperVerseBootstrap;
+import dev.hypersystems.hyperverse.command.WorldCommand;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 
@@ -48,13 +49,26 @@ public class HyperVersePlugin extends JavaPlugin {
         // Enable HyperVerse core
         hyperVerse.enable();
 
-        // TODO: Register commands
-        // registerCommands();
+        // Register commands
+        registerCommands();
 
         // TODO: Register event listeners
         // registerEventListeners();
 
         getLogger().at(Level.INFO).log("HyperVerse v%s enabled!", getManifest().getVersion());
+    }
+
+    /**
+     * Registers commands with Hytale.
+     */
+    private void registerCommands() {
+        try {
+            getCommandRegistry().registerCommand(new WorldCommand(hyperVerse));
+
+            getLogger().at(Level.INFO).log("Registered commands: /world");
+        } catch (Exception e) {
+            getLogger().at(Level.SEVERE).withCause(e).log("Failed to register commands");
+        }
     }
 
     @Override
