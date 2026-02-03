@@ -1,7 +1,10 @@
 package dev.hypersystems.hyperverse.world;
 
+import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.WorldConfig;
+import com.hypixel.hytale.server.core.universe.world.spawn.GlobalSpawnProvider;
 import dev.hypersystems.hyperverse.HyperVerse;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -75,13 +78,20 @@ public class WorldManager {
         logger.info("Creating world '" + name + "' with template '" + template + "'");
 
         try {
-            // Create world through Universe API - returns CompletableFuture<World>
-            return Universe.get().addWorld(name)
+            // Map template to Hytale generator type
+            String generatorType = mapTemplateToGeneratorType(template);
+
+            // Create world through Universe API with generator type
+            // Using the deprecated but functional addWorld(name, generatorType, chunkStorageType)
+            return Universe.get().addWorld(name, generatorType, null)
                 .thenApply(world -> {
                     if (world != null) {
+                        // Configure spawn provider based on template
+                        configureWorldForTemplate(world, template);
+
                         // Track the new world
                         worldMetadata.put(name, new WorldMetadata(name, template));
-                        logger.info("World '" + name + "' created successfully");
+                        logger.info("World '" + name + "' created successfully with generator '" + generatorType + "'");
                     }
                     return world;
                 })
@@ -96,7 +106,57 @@ public class WorldManager {
     }
 
     /**
-     * Deletes a world.
+     * Maps a HyperVerse template name to Hytale's generator type ID.
+     *
+     * @param template the template name (void, flat, default)
+     * @return the Hytale generator type ID
+     */
+    private String mapTemplateToGeneratorType(@NotNull String template) {
+        return switch (template.toLowerCase()) {
+            case "void" -> "Void";
+            case "flat" -> "Flat";
+            default -> null; // null = use Hytale's default generator
+        };
+    }
+
+    /**
+     * Configures world settings based on template after creation.
+     *
+     * @param world    the created world
+     * @param template the template used
+     */
+    private void configureWorldForTemplate(@NotNull World world, @NotNull String template) {
+        WorldConfig config = world.getWorldConfig();
+
+        // Set spawn provider if not already set by the generator
+        if (config.getSpawnProvider() == null) {
+            Transform defaultSpawn = getDefaultSpawnForTemplate(template);
+            config.setSpawnProvider(new GlobalSpawnProvider(defaultSpawn));
+            logger.info("Configured spawn provider for world '" + world.getName() + "' at " + defaultSpawn);
+        }
+
+        // Mark config as changed so it gets saved
+        config.markChanged();
+    }
+
+    /**
+     * Gets the default spawn transform for a template.
+     *
+     * @param template the template name
+     * @return the default spawn transform
+     */
+    private Transform getDefaultSpawnForTemplate(@NotNull String template) {
+        return switch (template.toLowerCase()) {
+            case "void" -> new Transform(0, 1, 0);  // Void worlds spawn at Y=1
+            case "flat" -> new Transform(0, 81, 0); // Flat worlds spawn above the terrain (Y=80)
+            default -> new Transform(0, 64, 0);    // Default spawn
+        };
+    }
+
+    /**
+     * Deletes a world permanently.
+     * <p>
+     * This will remove the world from memory AND delete its data from disk.
      *
      * @param name the world name
      * @return a future that completes when the world is deleted
@@ -114,10 +174,13 @@ public class WorldManager {
                 new IllegalStateException("Cannot delete world '" + name + "' with players in it"));
         }
 
-        logger.info("Deleting world '" + name + "'");
+        logger.info("Deleting world '" + name + "' (including disk data)");
 
         return CompletableFuture.runAsync(() -> {
             try {
+                // Set deleteOnRemove to true so Universe.removeWorld() deletes the data
+                world.getWorldConfig().setDeleteOnRemove(true);
+
                 Universe.get().removeWorld(name);
                 worldMetadata.remove(name);
                 logger.info("World '" + name + "' deleted successfully");
@@ -171,7 +234,11 @@ public class WorldManager {
     }
 
     /**
-     * Unloads a world.
+     * Unloads a world from memory without deleting its data.
+     * <p>
+     * The world can be reloaded later using {@link #loadWorld(String)}.
+     * NOTE: The Hytale Universe API does not have a dedicated "unload" method.
+     * This uses removeWorld() with deleteOnRemove=false to preserve world data.
      *
      * @param name the world name
      * @return a future that completes when the world is unloaded
@@ -189,12 +256,19 @@ public class WorldManager {
                 new IllegalStateException("Cannot unload world '" + name + "' with players in it"));
         }
 
-        logger.info("Unloading world '" + name + "'");
+        logger.info("Unloading world '" + name + "' (preserving disk data)");
 
         return CompletableFuture.runAsync(() -> {
             try {
+                // IMPORTANT: Set deleteOnRemove to false to preserve world data on disk
+                // The Hytale API's removeWorld() checks this flag before deleting
+                world.getWorldConfig().setDeleteOnRemove(false);
+
                 Universe.get().removeWorld(name);
-                logger.info("World '" + name + "' unloaded successfully");
+
+                // Note: We keep the metadata in case the world is reloaded
+                // The metadata will be refreshed on reload anyway
+                logger.info("World '" + name + "' unloaded successfully (data preserved on disk)");
             } catch (Exception e) {
                 logger.severe("Failed to unload world '" + name + "': " + e.getMessage());
                 throw new RuntimeException("Failed to unload world", e);

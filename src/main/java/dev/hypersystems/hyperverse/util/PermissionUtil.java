@@ -86,35 +86,52 @@ public final class PermissionUtil {
 
     /**
      * Checks if a player has a permission via command context.
+     * <p>
+     * If the sender is a player, their permissions are checked via HyperPerms.
+     * If the sender is console or the sender type cannot be determined, permission is granted.
+     * <p>
+     * Note: Console detection is done by checking if we can get a PlayerRef, NOT by
+     * string matching on sender.toString() which could match usernames containing "console".
      *
      * @param ctx        the command context
      * @param permission the permission to check
      * @return true if has permission or check cannot be performed
      */
     public static boolean hasPermission(@NotNull CommandContext ctx, @NotNull String permission) {
-        // Try to get player UUID from sender
+        // Try to get player UUID from sender using reflection
+        // If we can successfully get a PlayerRef with a UUID, this is a player
+        // Otherwise, assume it's console or another non-player sender (allow by default)
         try {
             Object sender = ctx.sender();
-            // Check if sender is a player by looking for getUuid method
+
+            // Try to get PlayerRef from the sender
+            // Player command senders typically have a getPlayerRef() method
             Method getPlayerRef = sender.getClass().getMethod("getPlayerRef");
             Object playerRef = getPlayerRef.invoke(sender);
+
             if (playerRef != null) {
+                // Successfully got a PlayerRef - this is a player, check their permissions
                 Method getUuid = playerRef.getClass().getMethod("getUuid");
                 UUID uuid = (UUID) getUuid.invoke(playerRef);
-                return hasPermission(uuid, permission);
-            }
-        } catch (Exception e) {
-            // Not a player or reflection failed, check if console
-            try {
-                String senderName = ctx.sender().toString().toLowerCase();
-                if (senderName.contains("console") || senderName.contains("server")) {
-                    return true; // Console always has permission
+                if (uuid != null) {
+                    return hasPermission(uuid, permission);
                 }
-            } catch (Exception ignored) {}
-        }
+            }
 
-        // Default to allow if we can't determine the sender type
-        return true;
+            // PlayerRef is null - sender exists but isn't a player (likely console)
+            // Console always has permission
+            return true;
+
+        } catch (NoSuchMethodException e) {
+            // Sender doesn't have getPlayerRef() method - not a player sender
+            // This is typically console or a system sender - allow by default
+            return true;
+        } catch (Exception e) {
+            // Other reflection errors - fail open (allow) for safety
+            // This ensures commands work even if reflection fails
+            LOGGER.fine("Could not determine sender type for permission check: " + e.getMessage());
+            return true;
+        }
     }
 
     /**

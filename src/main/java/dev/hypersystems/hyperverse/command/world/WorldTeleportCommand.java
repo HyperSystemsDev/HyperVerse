@@ -1,7 +1,9 @@
 package dev.hypersystems.hyperverse.command.world;
 
+import com.hypixel.hytale.component.Holder;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
+import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.math.vector.Vector3d;
 import com.hypixel.hytale.math.vector.Vector3f;
 import com.hypixel.hytale.server.core.Message;
@@ -10,9 +12,9 @@ import com.hypixel.hytale.server.core.command.system.arguments.system.OptionalAr
 import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
 import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
 import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
-import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.spawn.ISpawnProvider;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import dev.hypersystems.hyperverse.HyperVerse;
 import dev.hypersystems.hyperverse.util.PermissionUtil;
@@ -109,20 +111,49 @@ public class WorldTeleportCommand extends AbstractPlayerCommand {
             return;
         }
 
-        // Get spawn position (center of world for now)
-        // TODO: Use WorldConfig spawn provider when available
-        Vector3d spawnPosition = new Vector3d(0, 64, 0);
-        Vector3f spawnRotation = new Vector3f(0, 0, 0);
+        // Get spawn transform from WorldConfig's spawn provider
+        Transform spawnTransform = getSpawnTransform(targetWorld, playerRef);
 
         ctx.sender().sendMessage(info("Teleporting to world '" + targetWorld.getName() + "'..."));
 
-        // Execute teleport on target world's thread
-        targetWorld.execute(() -> {
-            Teleport teleport = new Teleport(targetWorld, spawnPosition, spawnRotation);
-            store.addComponent(ref, Teleport.getComponentType(), teleport);
-        });
+        // For cross-world teleport, we need to:
+        // 1. Remove player from current world
+        // 2. Add player to target world at spawn position
+        // Using World.addPlayer() handles this properly
+        currentWorld.execute(() -> {
+            // Remove from current world's store
+            Holder<EntityStore> holder = playerRef.removeFromStore();
 
-        ctx.sender().sendMessage(success("Teleported to world '" + targetWorld.getName() + "'!"));
+            // Add to target world with spawn transform
+            // Note: addPlayer is async and handles the teleport properly
+            targetWorld.addPlayer(playerRef, spawnTransform)
+                .thenAccept(result -> {
+                    // Send success message AFTER teleport completes
+                    ctx.sender().sendMessage(success("Teleported to world '" + targetWorld.getName() + "'!"));
+                })
+                .exceptionally(e -> {
+                    ctx.sender().sendMessage(error("Failed to teleport: " + e.getMessage()));
+                    hyperVerse.getLogger().warning("Teleport failed for " + playerRef.getUsername() + ": " + e.getMessage());
+                    return null;
+                });
+        });
+    }
+
+    /**
+     * Gets the spawn transform for a world.
+     * Uses the WorldConfig spawn provider if available, otherwise falls back to default.
+     */
+    private Transform getSpawnTransform(World world, PlayerRef playerRef) {
+        ISpawnProvider spawnProvider = world.getWorldConfig().getSpawnProvider();
+
+        if (spawnProvider != null) {
+            // Use the spawn provider to get position for this player
+            return spawnProvider.getSpawnPoint(world, playerRef.getUuid());
+        }
+
+        // Fallback to a safe default spawn position
+        // Y=64 is a reasonable default for most worlds
+        return new Transform(0, 64, 0);
     }
 
     // Message helpers
