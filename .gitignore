@@ -1,0 +1,46 @@
+# Build
+build/
+.gradle/
+bin/
+out/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# Dependencies
+libs/
+
+# Runtime
+server/
+data/
+
+# Gradle wrapper (regenerate with: gradle wrapper)
+gradle/wrapper/gradle-wrapper.jar
+gradlew
+gradlew.bat
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+nul
+*.tmp
+*.bak
+
+# Tool directories
+.serena/
+.playwright-mcp/
+
+# Project instructions (local only)
+CLAUDE.md
+Claude-P.md

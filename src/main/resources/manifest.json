@@ -1,0 +1,10 @@
+{
+  "Group": "dev.hypersystems.hyperverse",
+  "Name": "HyperVerse",
+  "Version": "${version}",
+  "Description": "World management for Hytale servers",
+  "Website": "https://github.com/HyperSystemsDev/HyperVerse",
+  "Main": "dev.hypersystems.hyperverse.platform.HyperVersePlugin",
+  "ServerVersion": "*",
+  "SoftDependencies": ["HyperPerms"]
+}
